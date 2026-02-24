@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>USSD Demo — Compact Centered</title>
+
+<style>
+:root{
+  --bg:#000;
+  --sheet:#2a2a2d;
+  --text:#f2f2f2;
+  --muted:#bdbdbd;
+  --line:#d9d9d9;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  background:var(--bg);
+  height:100svh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--text);
+}
+.sheet{
+  width:min(380px,94vw);
+  background:var(--sheet);
+  border-radius:18px;
+  padding:12px 14px 10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.55);
+}
+.content{
+  min-height:auto;
+  white-space:pre-wrap;
+  line-height:1.25;
+  font-size:15px;
+  letter-spacing:.1px;
+  font-variant-numeric:tabular-nums;
+}
+.divider{
+  height:1px;
+  background:var(--line);
+  opacity:.85;
+  margin:6px 0 6px;
+}
+.row{display:flex;align-items:center;}
+.input{
+  width:100%;
+  background:transparent;
+  border:none;
+  outline:none;
+  color:var(--text);
+  font-size:15px;
+  padding:2px 0;
+}
+.hint{
+  margin-top:2px;
+  color:var(--muted);
+  font-size:11px;
+  min-height:14px;
+}
+.actions{
+  margin-top:4px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.btn{
+  flex:1;
+  border:none;
+  background:transparent;
+  color:#f2f2f2;
+  font-size:15px;
+  padding:8px 4px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.sep{
+  width:1px;
+  height:18px;
+  background:rgba(255,255,255,.25);
+  margin:0 6px;
+}
+</style>
+</head>
+
+<body>
+<div class="sheet" role="dialog" aria-label="USSD Demo">
+  <div id="screen" class="content"></div>
+
+  <div class="row" style="margin-top:6px;">
+    <input id="ussdInput" class="input" inputmode="numeric" autocomplete="off"/>
+  </div>
+
+  <div class="divider"></div>
+  <div id="hint" class="hint"></div>
+
+  <div class="actions">
+    <button id="cancelBtn" class="btn" type="button">Cancel</button>
+    <div class="sep"></div>
+    <button id="sendBtn" class="btn" type="button">Send</button>
+  </div>
+</div>
+
+<script>
+(() => {
+
+const State={START:"START",RAMADAN:"RAMADAN",FOR_WHO:"FOR_WHO",PIN:"PIN",SUCCESS:"SUCCESS"};
+
+/*
+  ✅ Added: $10 – Unlimited (Bile) as option 1
+  ✅ Re-numbered existing offers to keep total = 6
+*/
+const pkgs=[
+ {id:1,price:"$10", amount:"Unlimited", type:"",              validity:"Bile",     priceExact:"$10.00"},
+ {id:2,price:"$5",  amount:"40GB",     type:"Xirmo Xadeysan", validity:"Bile",     priceExact:"$5.00"},
+ {id:3,price:"$2",  amount:"Unlimited",type:"",              validity:"Asbuucle", priceExact:"$2.00"},
+ {id:4,price:"$1",  amount:"8GB",      type:"Xirmo Xadeysan", validity:"Asbuucle", priceExact:"$1.00"},
+ {id:5,price:"$0.25",amount:"Unlimited",type:"",             validity:"15 Saac",  priceExact:"$0.25"},
+ {id:6,price:"$0.15",amount:"Unlimited",type:"",             validity:"7 Saac",   priceExact:"$0.15"}
+];
+
+const elScreen=document.getElementById("screen");
+const elInput=document.getElementById("ussdInput");
+const elHint=document.getElementById("hint");
+const btnSend=document.getElementById("sendBtn");
+const btnCancel=document.getElementById("cancelBtn");
+
+const ctx={state:State.START,selectedPkg:null,target:null};
+
+const msisdn=/^66\d{7}$/;
+const pin=/^\d{4}$/;
+
+function screen(lines){ elScreen.textContent = lines.join("\n"); }
+
+function pkgLine(p){
+ const mid=(p.amount==="Unlimited")
+   ? `Unlimited (${p.validity})`
+   : `${p.amount} ${p.type} (${p.validity})`;
+ return `${p.id}. ${p.price} – ${mid}`;
+}
+
+function hint(t=""){elHint.textContent=t;}
+
+function render(){
+ hint("");
+ elInput.value="";
+ elInput.disabled=false;
+
+ if(ctx.state===State.START){
+  screen([
+    "0. Ramadan Offers",
+    "1. Ku shubo",
+    "2. Ugu shub qof kale"
+  ]);
+  elInput.placeholder="Dooro";
+  return;
+ }
+
+ if(ctx.state===State.RAMADAN){
+  screen([
+    "Ramadan Offers",
+    "",
+    ...pkgs.map(pkgLine),
+    "",
+    "0. Dib u noqo"
+  ]);
+  elInput.placeholder="Dooro (1-6)";
+  return;
+ }
+
+ if(ctx.state===State.FOR_WHO){
+  const p=ctx.selectedPkg;
+  const t=`<${(p.amount==="Unlimited" ? "Unlimited" : p.amount)} (${p.validity}) ${p.priceExact}>`;
+
+  screen([
+    "Dooro:",
+    t,
+    "1. Aniga",
+    "2. Qof kale – geli lambarka (66XXXXXXX)",
+    "",
+    "0. Dib u noqo"
+  ]);
+  elInput.placeholder="1 ama 66XXXXXXX";
+  return;
+ }
+
+ if(ctx.state===State.PIN){
+  const p=ctx.selectedPkg;
+  const off=(p.amount==="Unlimited")
+    ? `Unlimited (${p.validity})`
+    : `${p.amount} ${p.type} (${p.validity})`;
+
+  screen([
+    "Ma hubtaa:",
+    off,
+    `Qiime: ${p.priceExact}`,
+    `Lambarka: ${ctx.target}`,
+    "Geli PIN-ka eDahab",
+    "",
+    "0. Dib u noqo"
+  ]);
+  elInput.placeholder="PIN";
+  return;
+ }
+
+ if(ctx.state===State.SUCCESS){
+  const p=ctx.selectedPkg;
+  const off=(p.amount==="Unlimited")
+    ? `Unlimited (${p.validity})`
+    : `${p.amount} ${p.type} (${p.validity})`;
+
+  screen([
+    "Waad ku guulaysatay!",
+    off,
+    "🌙 Ramadan Kareem!",
+    "Ku raaxayso xirmooyinka Ramadan."
+  ]);
+  elInput.disabled=true;
+ }
+}
+
+function send(){
+ const v=(elInput.value||"").trim();
+
+ if(v==="0" && ctx.state!==State.START){back();return;}
+
+ if(ctx.state===State.START){
+   if(v==="0"){ctx.state=State.RAMADAN;render();return;}
+   hint("Isticmaal 0"); return;
+ }
+
+ if(ctx.state===State.RAMADAN){
+   const f=pkgs.find(p=>p.id===Number(v));
+   if(!f){hint("Dooro 1–6");return;}
+   ctx.selectedPkg=f; ctx.state=State.FOR_WHO; render(); return;
+ }
+
+ if(ctx.state===State.FOR_WHO){
+   if(v==="1"){ctx.target="66XXXXXXX";ctx.state=State.PIN;render();return;}
+   if(msisdn.test(v)){ctx.target=v;ctx.state=State.PIN;render();return;}
+   hint("Geli 66XXXXXXX"); return;
+ }
+
+ if(ctx.state===State.PIN){
+   if(!pin.test(v)){hint("PIN waa 4 lambar");return;}
+   ctx.state=State.SUCCESS; render(); return;
+ }
+}
+
+function back(){
+ if(ctx.state===State.RAMADAN) ctx.state=State.START;
+ else if(ctx.state===State.FOR_WHO) ctx.state=State.RAMADAN;
+ else if(ctx.state===State.PIN) ctx.state=State.FOR_WHO;
+ else if(ctx.state===State.SUCCESS) ctx.state=State.START;
+ render();
+}
+
+btnSend.onclick=send;
+btnCancel.onclick=()=>{ctx.state=State.START;render();};
+elInput.addEventListener("keydown",e=>{if(e.key==="Enter")send();});
+
+render();
+})();
+</script>
+</body>
+</html>
